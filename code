@@ -24,7 +24,7 @@ from io import BytesIO
 expenses = None
 
 # Токен авторизации бота (ВНИМАНИЕ: не публикуйте токен в открытом доступе!)
-token = 'BOT token'
+token = '8762478469:AAEr0yCuOlt4IeYMtsyb8nZVFKgUUjBe0mE'
 
 # ID чата с пользователем (устанавливается при команде /start)
 chat_id = None
@@ -53,6 +53,14 @@ async def staring(message: types.Message):
     chat_id = message.chat.id
     user = message.from_user
     await message.answer(f"👋Привет, {user.first_name}, здесь ты сможешь узнать свои еженедельные затраты.")
+    photo_path = r"C:\Users\PC\Pictures\Screenshots\Снимок экрана 2026-04-03 210252.png"
+
+    # Открываем файл и отправляем
+    with open(photo_path, "rb") as photo:
+        await message.answer_photo(
+            photo=types.FSInputFile(photo_path),
+            caption="Вот шаблон для создания Excel таблицы"
+        )
 
 
 @dp.message(Command("expenses"))
