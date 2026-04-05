@@ -1,0 +1,256 @@
+"""
+Telegram бот для анализа личных расходов
+
+Этот бот позволяет пользователям загружать файлы Excel с данными о расходах,
+строить графики и сравнивать фактические расходы с планом.
+
+Автор: Герасименко Дмитрий Сергеевич ИЭ-71
+Версия: 1.0
+"""
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import asyncio
+from aiogram import Bot, Dispatcher, types
+from aiogram.filters import Command
+import tempfile
+from io import BytesIO
+
+# ==================== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ====================
+
+# DataFrame для хранения данных о расходах
+# Ожидаемая структура: первый столбец - категории расходов,
+# столбцы 1-7 - расходы по дням недели
+expenses = None
+
+# Токен авторизации бота (ВНИМАНИЕ: не публикуйте токен в открытом доступе!)
+token = 'BOT token'
+
+# ID чата с пользователем (устанавливается при команде /start)
+chat_id = None
+
+# Инициализация бота и диспетчера
+bot = Bot(token=token)
+dp = Dispatcher()
+
+
+# ==================== ОБРАБОТЧИКИ КОМАНД ====================
+
+@dp.message(Command('start'))
+async def staring(message: types.Message):
+    """
+    Обработчик команды /start
+
+    Приветствует пользователя, сохраняет ID чата и информирует о функциях бота.
+
+    Args:
+        message (types.Message): Объект сообщения от Telegram
+
+    Global:
+        chat_id: Сохраняет ID чата для дальнейших операций
+    """
+    global chat_id
+    chat_id = message.chat.id
+    user = message.from_user
+    await message.answer(f"👋Привет, {user.first_name}, здесь ты сможешь узнать свои еженедельные затраты.")
+
+
+@dp.message(Command("expenses"))
+async def start(message: types.Message):
+    """
+    Обработчик команды /expenses
+
+    Запрашивает у пользователя файл с данными о расходах в формате .xlsx
+
+    Args:
+        message (types.Message): Объект сообщения от Telegram
+    """
+    await message.answer(
+        "Отправь файл твоих расходов (.xlsx)"
+    )
+
+
+@dp.message(lambda message: message.document)
+async def handle(message: types.Message):
+    """
+    Обработчик загруженных документов (для файла расходов)
+
+    Загружает файл Excel, проверяет формат и сохраняет данные в глобальную переменную expenses.
+
+    Args:
+        message (types.Message): Объект сообщения с документом
+
+    Global:
+        expenses: DataFrame с данными о расходах
+
+    Примечание:
+        Этот обработчик будет вызван для ЛЮБОГО документа, отправленного боту
+    """
+    global expenses
+    document = message.document
+
+    # Проверка расширения файла
+    if not (document.file_name.endswith('.xlsx')):
+        await message.answer("Отправь файл в формате .xlsx")
+        return
+
+    await message.answer("Файл получен")
+
+    # Создание временного файла для сохранения загруженного Excel
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
+        file = await bot.get_file(document.file_id)
+        await bot.download_file(file.file_path, tmp_file.name)
+        tmp_path = tmp_file.name
+        expenses = pd.read_excel(tmp_path)
+
+
+@dp.message(Command("plan"))
+async def start(message: types.Message):
+    """
+    Обработчик команды /plan
+
+    Запрашивает у пользователя файл с планом расходов в формате .xlsx
+
+    Args:
+        message (types.Message): Объект сообщения от Telegram
+    """
+    await message.answer(
+        "Отправь файл твоего плана расходов (.xlsx)"
+    )
+
+
+@dp.message(lambda message: message.document)
+async def handle_excel(message: types.Message):
+    """
+    Обработчик загруженных документов (для файла плана)
+
+    ЗАМЕЧАНИЕ: Этот обработчик конфликтует с предыдущим обработчиком документов!
+    Будет вызван только первый подходящий обработчик.
+
+    Args:
+        message (types.Message): Объект сообщения с документом
+    """
+    document = message.document
+
+    if not (document.file_name.endswith('.xlsx')):
+        await message.answer("Отправь файл в формате .xlsx")
+        return
+
+    await message.answer("Файл получен")
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
+        file = await bot.get_file(document.file_id)
+        await bot.download_file(file.file_path, tmp_file.name)
+        tmp_path = tmp_file.name
+        plan_expenses = pd.read_excel(tmp_path)  # Локальная переменная, не сохраняется глобально
+
+
+@dp.message(Command('buttons'))
+async def get_main_keyboard(message: types.Message):
+    """
+    Обработчик команды /buttons
+
+    Показывает пользователю клавиатуру с кнопками для выбора действий.
+
+    Args:
+        message (types.Message): Объект сообщения от Telegram
+
+    Кнопки:
+        - 📊Сравнение с планом
+        - 💰График расходов
+    """
+    kb = [
+        [types.KeyboardButton(text="📊Сравнение с планом")],
+        [types.KeyboardButton(text="💰График расходов")]
+    ]
+    keyboard = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
+    await message.answer("Выберите действие:", reply_markup=keyboard)
+
+
+@dp.message(lambda msg: msg.text == "📊Сравнение с планом")
+async def plan(message: types.Message):
+    """
+    Обработчик нажатия кнопки "📊Сравнение с планом"
+
+    В текущей реализации - заглушка.
+
+    Args:
+        message (types.Message): Объект сообщения от Telegram
+
+    TODO: Реализовать сравнение фактических расходов с планом
+    """
+    await message.answer("Тут выводится график")
+
+
+@dp.message(lambda msg: msg.text == "💰График расходов")
+async def expenses_func(message: types.Message):
+    """
+    Обработчик нажатия кнопки "💰График расходов"
+
+    Строит линейный график расходов по категориям и дням недели.
+
+    Args:
+        message (types.Message): Объект сообщения от Telegram
+
+    Global:
+        expenses: DataFrame с данными о расходах
+
+    Ожидаемая структура expenses:
+        - Столбец 0: Названия категорий расходов
+        - Столбцы 1-7: Расходы по дням недели
+
+    Returns:
+        Отправляет изображение графика пользователю или сообщение об ошибке
+    """
+    if expenses is None or expenses.empty:
+        await message.answer("Нет данных для отображения")
+        return
+    else:
+        await message.answer("График создается")
+
+    # Создание графика
+    plt.figure(figsize=(10, 6))
+    x = range(1, 8)  # Дни недели (1-7)
+
+    # Построение линии для каждой категории расходов
+    for i in range(len(expenses)):
+        category = expenses.iloc[i, 0]  # Название категории
+        y = expenses.iloc[i, 1:8].values  # Расходы по дням
+        plt.plot(x, y, marker='o', linestyle='-', label=category)
+
+    # Настройка внешнего вида графика
+    plt.xlabel('Дни')
+    plt.ylabel('Затраты')
+    plt.title('График затрат по дням')
+    plt.legend()
+    plt.grid(True)
+    plt.xticks(x)
+    plt.tight_layout()
+
+    # Сохранение графика в буфер
+    buffer = BytesIO()
+    plt.savefig(buffer, format='png', dpi=100, bbox_inches='tight')
+    buffer.seek(0)
+    plt.close()
+
+    # Отправка графика пользователю
+    await message.answer_photo(
+        photo=types.BufferedInputFile(buffer.getvalue(), filename="plot.png"),
+        caption="📊 График затрат по дням"
+    )
+
+
+# ==================== ЗАПУСК БОТА ====================
+
+async def main():
+    """
+    Главная асинхронная функция
+
+    Запускает поллинг (опрос серверов Telegram) для получения обновлений.
+    """
+    await dp.start_polling(bot)
+
+
+if __name__ == "__main__":
+    # Точка входа в программу
+    asyncio.run(main())
