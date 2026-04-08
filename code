@@ -24,7 +24,7 @@ from io import BytesIO
 expenses = None
 
 # Токен авторизации бота (ВНИМАНИЕ: не публикуйте токен в открытом доступе!)
-token = '8762478469:AAEr0yCuOlt4IeYMtsyb8nZVFKgUUjBe0mE'
+token = 'Your_token'
 
 # ID чата с пользователем (устанавливается при команде /start)
 chat_id = None
@@ -259,6 +259,11 @@ async def expenses_func(message: types.Message):
 
 @dp.message()
 async def buget(message: types.Message):
+    global date0
+    global day0
+    global month0
+    global year0
+    global expense_table
     date = message.date  # это datetime объект
     day = date.day
     month = date.month
@@ -268,11 +273,6 @@ async def buget(message: types.Message):
     two_word = text.split()[1]
     a = 0
     while a == 0:
-        global date0
-        global day0
-        global month0
-        global year0
-        global expense_table
         date0 = date
         day0 = day
         month0 = month
@@ -280,9 +280,13 @@ async def buget(message: types.Message):
         a += 1
 
     if year == year0 and month == month0 and day == day0:
-        expense_table.loc[len(expense_table)] = [first_word, two_word, date0]
-        print(expense_table)
-        await message.answer("Занёс в список")
+        list_expense = expense_table['Затраты'].tolist()
+        print(list_expense)
+        if first_word in list_expense:
+            indices = expense_table.index[expense_table['Затраты'] == first_word].tolist()
+            expense_table.loc[2,indices[1]] = expense_table.loc[2,indices[1]] + two_word
+            expense_table.loc[len(expense_table)] = [first_word, two_word, date0]
+            await message.answer("Занёс в список")
 
 
 # ==================== ЗАПУСК БОТА ====================
