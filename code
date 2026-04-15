@@ -36,6 +36,7 @@ date0 = None
 day0 = None
 month0 = None
 year0 = None
+day = None
 expense_table = pd.DataFrame({
         "Затраты": [],
         "Дата": [],
@@ -71,8 +72,9 @@ async def staring(message: types.Message):
             photo=types.FSInputFile(photo_path),
             caption="Вот шаблон для создания Excel таблицы"
         )
-
-
+    await message.answer("Так же вы можете пользоваться функцией автоматического создания таблиц и графиков")
+    await message.answer("Шаблон: [категория затрат][деньги которые вы потратили в рублях]")
+    await message.answer("Пример: овощи 786")
 @dp.message(Command("expenses"))
 async def start(message: types.Message):
     """
@@ -202,6 +204,7 @@ async def plan(message: types.Message):
 
 @dp.message(lambda msg: msg.text == "💰График расходов")
 async def expenses_func(message: types.Message):
+    global day0, day
     """
     Обработчик нажатия кнопки "💰График расходов"
 
@@ -228,7 +231,7 @@ async def expenses_func(message: types.Message):
 
     # Создание графика
     plt.figure(figsize=(10, 6))
-    x = range(1, 8)  # Дни недели (1-7)
+    x = day - day0
 
     # Построение линии для каждой категории расходов
     for i in range(len(expenses)):
@@ -264,6 +267,7 @@ async def buget(message: types.Message):
     global month0
     global year0
     global expense_table
+    global day
     date = message.date  # это datetime объект
     day = date.day
     month = date.month
@@ -271,8 +275,8 @@ async def buget(message: types.Message):
     text = message.text
     first_word = text.split()[0]
     two_word = text.split()[1]
-    a = 0
-    while a == 0:
+    a = 67
+    while a == 67:
         date0 = date
         day0 = day
         month0 = month
@@ -286,7 +290,7 @@ async def buget(message: types.Message):
             indices = expense_table.index[expense_table['Затраты'] == first_word].tolist()
             expense_table.loc[2,indices[1]] = expense_table.loc[2,indices[1]] + two_word
             expense_table.loc[len(expense_table)] = [first_word, two_word, date0]
-            await message.answer("Занёс в список")
+            await message.answer(f"Добавил {two_word} рублей в {first_word}")
 
 
 # ==================== ЗАПУСК БОТА ====================
