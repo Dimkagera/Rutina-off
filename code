@@ -10,21 +10,18 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import BufferedInputFile, FSInputFile
 
-
-
-token = 'Your_token'
+# ==================== НАСТРОЙКИ ====================
+token = 'Your token'
 bot = Bot(token=token)
 dp = Dispatcher()
-
 
 DATA_DIR = "user_expenses"
 os.makedirs(DATA_DIR, exist_ok=True)
 
-
 user_expected_file = {}
+plan_mode_users = set()  # 🆕 Хранит ID пользователей, заполняющих план вручную
 
-
-
+# ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 def get_user_file_path(user_id: int, prefix: str) -> str:
     return os.path.join(DATA_DIR, f"{prefix}_{user_id}.xlsx")
 
@@ -33,8 +30,7 @@ def load_or_create_df(path: str) -> pd.DataFrame:
         return pd.read_excel(path)
     return pd.DataFrame(columns=["Затраты", "Дата", "Деньги"])
 
-
-
+# ==================== КОМАНДЫ ====================
 @dp.message(Command('start'))
 async def start_command(message: types.Message):
     user = message.from_user
@@ -46,14 +42,12 @@ async def start_command(message: types.Message):
         "Для просмотра графика используй кнопку 💰График расходов."
     )
 
-
     photo_path = r"C:\Users\PC\Pictures\Screenshots\Снимок экрана 2026-04-03 210252.png"
     if os.path.exists(photo_path):
         await message.answer_photo(
             photo=FSInputFile(photo_path),
             caption="📎 Шаблон Excel-таблицы (структура: Затраты | Дата | Деньги)"
         )
-
 @dp.message(Command("expenses"))
 async def cmd_expenses(message: types.Message):
     user_expected_file[message.from_user.id] = "expense"
@@ -84,10 +78,25 @@ async def reset_data(message: types.Message):
             os.remove(path)
     await message.answer("🗑️ Все ваши данные удалены. Отправьте новые расходы.")
 
+@dp.message(Command("fill_plan"))
+async def start_plan_mode(message: types.Message):
+    user_id = message.from_user.id
+    plan_mode_users.add(user_id)
+    await message.answer(
+        "📝 **Режим заполнения плана активирован.**\n"
+        "Отправляйте данные в формате: `Категория Сумма`\n"
+        "Для завершения введите `/finish_plan`",
+        parse_mode="Markdown"
+    )
 
+@dp.message(Command("finish_plan"))
+async def end_plan_mode(message: types.Message):
+    user_id = message.from_user.id
+    plan_mode_users.discard(user_id)
+    await message.answer("✅ План сохранен. Нажмите кнопку 📊 *Сравнение с планом* для анализа.")
 
-@dp.message(F.document & F.document.file_name.endswith(".xlsx"))
-async def handle_document(message: types.Message):
+# ==================== ОБРАБОТКА ФАЙЛОВ ====================
+@dp.message(F.document & F.document.file_name.endswith(".xlsx"))async def handle_document(message: types.Message):
     user_id = message.from_user.id
     mode = user_expected_file.get(user_id, "expense")
     file_path = get_user_file_path(user_id, mode)
@@ -98,7 +107,6 @@ async def handle_document(message: types.Message):
         with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
             await bot.download_file(file.file_path, tmp.name)
             df = pd.read_excel(tmp.name)
-
 
         if len(df.columns) >= 3:
             df.columns = ["Затраты", "Дата", "Деньги"]
@@ -112,9 +120,7 @@ async def handle_document(message: types.Message):
     finally:
         user_expected_file.pop(user_id, None)
 
-
-
-
+# ==================== КНОПКИ ====================
 @dp.message(F.text == "💰 График расходов")
 async def expenses_func(message: types.Message):
     user_id = message.from_user.id
@@ -140,7 +146,6 @@ async def expenses_func(message: types.Message):
     plt.figure(figsize=(10, 6))
     for category in pivot_df.index:
         plt.plot(pivot_df.columns, pivot_df.loc[category], marker='o', linestyle='-', linewidth=2, label=category)
-
     plt.xlabel('Дата')
     plt.ylabel('Затраты (руб)')
     plt.title('📊 График затрат по дням')
@@ -164,11 +169,9 @@ async def delete_last_entry(message: types.Message):
     user_id = message.from_user.id
     file_path = get_user_file_path(user_id, "expense")
 
-
     if not os.path.exists(file_path):
         await message.answer("📭 Нет файла с расходами. Сначала добавьте траты.")
         return
-
 
     df = pd.read_excel(file_path)
     df.dropna(subset=["Затраты", "Деньги"], inplace=True)
@@ -177,66 +180,112 @@ async def delete_last_entry(message: types.Message):
         await message.answer("📭 Таблица пуста. Нечего удалять.")
         return
 
-
     last_row = df.iloc[-1]
     category = last_row["Затраты"]
     amount = last_row["Деньги"]
-
 
     try:
         date_str = pd.to_datetime(last_row["Дата"]).strftime("%d.%m.%Y")
     except:
         date_str = str(last_row["Дата"])
 
-
     df = df.iloc[:-1].reset_index(drop=True)
     df.to_excel(file_path, index=False)
 
-
     await message.answer(
         f"✅ Удалена последняя запись:\n"
-        f"📦 {category} — {amount} руб.\n"
-        f"📅 {date_str}"
+        f"📦 {category} — {amount} руб.\n"        f"📅 {date_str}"
     )
 
 @dp.message(F.text == "📊 Сравнение с планом")
-async def plan_comparison(message: types.Message):
-    await message.answer("⚙️ Функция сравнения с планом в разработке.")
+async def compare_with_plan(message: types.Message):
+    user_id = message.from_user.id
+    expense_path = get_user_file_path(user_id, "expense")
+    plan_path = get_user_file_path(user_id, "plan")
 
+    if not os.path.exists(plan_path):
+        await message.answer("📭 План не задан. Введите `/fill_plan` для заполнения.")
+        return
 
+    plan_df = pd.read_excel(plan_path)
+    if plan_df.empty:
+        await message.answer("📭 План пуст. Добавьте категории через `/fill_plan`")
+        return
 
+    plan_totals = plan_df.groupby("Затраты")["Сумма"].sum().to_dict()
+
+    actual_totals = {}
+    if os.path.exists(expense_path):
+        exp_df = pd.read_excel(expense_path)
+        if not exp_df.empty:
+            actual_totals = exp_df.groupby("Затраты")["Деньги"].sum().to_dict()
+
+    report_lines = []
+    for category, planned in plan_totals.items():
+        actual = actual_totals.get(category, 0)
+        diff = actual - planned
+
+        if actual == 0:
+            report_lines.append(f"`{category}` - не было затрачено")
+        elif diff > 0:
+            report_lines.append(f"`{category}` - потратил больше на `{diff:.2f}` ₽")
+        elif diff < 0:
+            report_lines.append(f"`{category}` - потратил меньше на `{abs(diff):.2f}` ₽")
+        else:
+            report_lines.append(f"`{category}` - уложился в план ✅")
+
+    if not report_lines:
+        await message.answer("📭 Нет данных для сравнения.")
+        return
+
+    final_text = "📊 **Сравнение плана и факта:**\n\n" + "\n".join(report_lines)
+    await message.answer(final_text, parse_mode="Markdown")
+
+# ==================== ТЕКСТОВЫЙ ВВОД (РАСХОДЫ ИЛИ ПЛАН) ====================
 @dp.message(F.text & ~F.text.startswith("/"))
-async def budget_handler(message: types.Message):
-    if message.text in ["💰 График расходов", "📊 Сравнение с планом"]:
+async def handle_text_input(message: types.Message):    if message.text in ["💰 График расходов", "📊 Сравнение с планом", "🗑️ Удалить последнюю запись"]:
         return
 
     user_id = message.from_user.id
-    file_path = get_user_file_path(user_id, "expense")
-
     parts = message.text.strip().split()
+    
     if len(parts) < 2:
-        await message.answer("⚠️ Используйте формат: `Категория Сумма` (например: овощи 786)")
+        await message.answer("⚠️ Используйте формат: `Категория Сумма`")
         return
 
-    category = parts[0]
     try:
         amount = float(parts[1])
     except ValueError:
         await message.answer("⚠️ Сумма должна быть числом")
         return
 
+    category = parts[0]
+
+    # 1️⃣ Режим ПЛАНА (ручной ввод через /fill_plan)
+    if user_id in plan_mode_users:
+        plan_path = get_user_file_path(user_id, "plan")
+        if os.path.exists(plan_path):
+            df = pd.read_excel(plan_path)
+        else:
+            df = pd.DataFrame(columns=["Затраты", "Сумма"])
+            
+        new_row = pd.DataFrame({"Затраты": [category], "Сумма": [amount]})
+        df = pd.concat([df, new_row], ignore_index=True)
+        df.to_excel(plan_path, index=False)
+        await message.answer(f"📅 План: `{category}` — `{amount:.2f}` ₽")
+        return
+
+    # 2️⃣ Режим РАСХОДОВ (стандартный ввод)
+    expense_path = get_user_file_path(user_id, "expense")
+    df = load_or_create_df(expense_path)
     today = datetime.now().strftime("%Y-%m-%d")
-    df = load_or_create_df(file_path)
+    
     new_row = pd.DataFrame({"Затраты": [category], "Дата": [today], "Деньги": [amount]})
     df = pd.concat([df, new_row], ignore_index=True)
-    df.to_excel(file_path, index=False)
+    df.to_excel(expense_path, index=False)
     await message.answer(f"✅ Добавлено: `{category}` — `{amount:.2f}` руб. ({today})")
 
-@dp.message(F.text == "📊 Сравнение с планом")
-async def plan_comparison(message: types.Message):
-    await message.answer("⚙️ Функция сравнения с планом находится в разработке.")
-
-
+# ==================== ЗАПУСК ====================
 async def main():
     await dp.start_polling(bot)
 
